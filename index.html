@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Interactive solar-PV energy flow lab: instant panel DC power, inverter AC power, losses, and power-versus-irradiance chart.">
+<title>SolarFlow Lab | Solar-PV Energy Explorer</title>
+<style>
+:root {
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-synthesis: none;
+  --bg:#071321; --surface:#101f30; --surface-elev:#15283c; --surface-quiet:#0c1a2b;
+  --text:#eff8ff; --muted:#9bb0c6; --edge:#2a4057; --grid:#24384e;
+  --cyan:#36d5ea; --cyan-deep:#159db9; --gold:#ffca6a; --purple:#b6a3fa;
+  --green:#79dfad; --red:#fa9f9e; --loss:#71859e;
+  --shadow:0 22px 60px rgba(0,0,0,.20);
+  --focus:#f7dd83; --canvas:#0b1b2b;
+}
+html[data-theme="light"] {
+  color-scheme:light;
+  --bg:#f3f7fa; --surface:#fff; --surface-elev:#eef4fa; --surface-quiet:#f8fbff;
+  --text:#17293a; --muted:#52677e; --edge:#cfdae5; --grid:#d7e2eb;
+  --cyan:#008aab; --cyan-deep:#087f9c; --gold:#ba7200; --purple:#755ac1;
+  --green:#177a55; --red:#a84647; --loss:#8190a3;
+  --shadow:0 16px 44px rgba(40,68,92,.08);
+  --focus:#8b5700; --canvas:#f5faff;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 0% 0%,rgba(20,166,191,.09),transparent 44%),var(--bg);color:var(--text);line-height:1.5}
+button,input{font:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,svg:focus-visible,.diagram-scroller:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.wrap{width:min(1320px,calc(100% - 44px));margin:auto}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:25px 0 20px}
+.identity{display:flex;align-items:center;gap:13px;min-width:0}
+.brandmark{width:48px;height:48px;flex-shrink:0;border:1px solid rgba(255,197,94,.5);display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,rgba(255,201,92,.24),rgba(52,213,234,.12));font-size:25px}
+.brand-title{margin:0;font-weight:820;letter-spacing:-.045em;font-size:clamp(21px,3vw,29px);line-height:1.1}
+.brand-sub{color:var(--muted);font-size:12px;letter-spacing:.09em;text-transform:uppercase;margin-top:4px}
+.top-actions{display:flex;align-items:center;gap:9px;flex-shrink:0}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--edge);border-radius:999px;padding:9px 14px;color:var(--muted);background:var(--surface);font-size:12px;font-weight:700}
+.mode-button,.utility-button{background:var(--surface);color:var(--text);border:1px solid var(--edge);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:720;transition:background .15s,transform .15s}
+.mode-button:hover,.utility-button:hover{background:var(--surface-elev)}
+.mode-button:active,.utility-button:active{transform:scale(.98)}
+.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:22px;margin:5px 0 18px}
+.hero h1{margin:0 0 8px;font-size:clamp(27px,4.6vw,46px);letter-spacing:-.05em;line-height:1.12}
+.hero h1 em{font-style:normal;color:var(--cyan)}
+.hero p{max-width:720px;color:var(--muted);margin:0;font-size:14px}
+.model-note{background:var(--surface);border:1px solid var(--edge);border-left:3px solid var(--gold);padding:12px 15px;border-radius:11px;max-width:350px;font-size:12px;color:var(--muted)}
+.model-note strong{display:block;color:var(--text);margin-bottom:3px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:22px 0 17px}
+.kpi{background:var(--surface);border:1px solid var(--edge);border-radius:16px;padding:17px 19px;min-width:0;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kpi-color,var(--cyan))}
+.kpi .key{color:var(--muted);font-size:12px;font-weight:680}
+.kpi .value{font-size:clamp(21px,2.9vw,32px);font-weight:810;letter-spacing:-.045em;margin-top:7px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.kpi .suffix{font-size:.49em;letter-spacing:0;color:var(--muted)}
+.kpi .detail{font-size:11px;color:var(--muted);margin-top:6px}
+.main-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(310px,1fr);gap:17px;align-items:start}
+.stack{display:grid;gap:17px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--edge);border-radius:18px;padding:20px;min-width:0;box-shadow:var(--shadow)}
+.panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:15px}
+.panel-heading h2{font-size:17px;letter-spacing:-.025em;margin:0 0 4px;font-weight:800}
+.panel-heading p{font-size:12px;color:var(--muted);margin:0}
+.tag{display:inline-flex;align-items:center;border:1px solid var(--edge);border-radius:8px;background:var(--surface-elev);color:var(--muted);padding:5px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+.diagram-scroller{overflow-x:auto;overscroll-behavior-inline:contain;border:1px solid var(--edge);border-radius:14px;background:var(--canvas);touch-action:pan-x pan-y}
+#energyDiagram{display:block;width:100%;min-width:650px;height:auto}
+.diagram-caption{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:11px;margin-top:11px}
+.svg-grid{stroke:var(--grid);opacity:.52;fill:none}
+.svg-label{fill:var(--text);font-size:15px;font-weight:750}
+.svg-small{fill:var(--muted);font-size:12px;font-weight:550}
+.svg-number{fill:var(--text);font-size:16px;font-weight:810;font-variant-numeric:tabular-nums}
+.svg-box{fill:var(--surface-elev);stroke:var(--edge);stroke-width:1.8}
+.svg-clickable{cursor:pointer;outline:none}
+.svg-clickable:focus-visible .svg-box,.svg-clickable:focus-visible .node-hit{stroke:var(--focus);stroke-width:3}
+.connector{fill:none;stroke-linecap:round;stroke-width:4}
+.stream{fill:none;stroke-linecap:round;stroke-dasharray:8 16;stroke-width:5;animation:stream 1.2s linear infinite}
+@keyframes stream{to{stroke-dashoffset:-48}}
+.paused .stream,.zero-flow .stream{animation-play-state:paused}
+.zero-flow .stream{opacity:.12!important}
+.inspector{background:var(--surface-quiet);border:1px solid var(--edge);border-radius:12px;padding:12px 14px;font-size:12px;color:var(--muted);min-height:54px}
+.inspector strong{color:var(--text)}
+.form-control{margin:0 0 21px}
+.control-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.control-head label{font-size:13px;font-weight:720}
+.control-value{font-size:15px;color:var(--cyan);font-weight:820;font-variant-numeric:tabular-nums;white-space:nowrap}
+input[type=range]{width:100%;height:7px;accent-color:var(--cyan);cursor:pointer;touch-action:pan-y;display:block;margin:12px 0 8px}
+.range-ticks{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.control-help{margin:6px 0 0;font-size:11px;color:var(--muted)}
+.control-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:1px}
+.primary-button{background:var(--cyan);border:1px solid transparent;border-radius:11px;color:#061724;padding:10px 15px;font-size:13px;font-weight:820}
+html[data-theme="light"] .primary-button{color:#fff}
+.primary-button:hover{filter:brightness(1.1)}
+.equations{display:grid;gap:8px;margin-top:17px}
+.equation{background:var(--surface-quiet);border:1px solid var(--edge);padding:10px 12px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px}
+.equation span:first-child{color:var(--muted)}
+.equation strong{font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.diagram-notice{color:var(--muted);font-size:11px}
+.key-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 15px;margin:16px 0 10px}
+.key-row{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.swatch{width:10px;height:10px;border-radius:3px;margin-top:4px;flex:0 0 auto;background:var(--swatch,var(--cyan))}
+.key-value{font-size:14px;font-weight:820;line-height:1.3;font-variant-numeric:tabular-nums}
+.key-label{font-size:11px;color:var(--muted)}
+.budget-track{margin-top:12px;width:100%;height:24px;border-radius:8px;display:flex;overflow:hidden;background:var(--surface-elev);border:1px solid var(--edge)}
+.budget-track>div{min-width:0;transition:width .15s ease}
+.budget-explain{font-size:11px;color:var(--muted);margin:12px 0 0}
+#powerChart{display:block;width:100%;height:auto;min-height:235px;border:1px solid var(--edge);border-radius:13px;background:var(--canvas);touch-action:none;cursor:crosshair}
+.chart-key{display:flex;gap:19px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
+.chart-key>span{display:flex;align-items:center;gap:7px}
+.dot{width:10px;height:10px;display:inline-block;border-radius:50%;background:var(--color)}
+#chartCaption{color:var(--muted);font-size:12px;margin-top:7px}
+.assumptions{margin:0;color:var(--muted);font-size:12px;padding-left:19px}
+.assumptions li{margin:6px 0}
+.quiz{margin:18px 0 27px}
+.quiz-head{margin:0 0 15px;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.quiz-head h2{margin:0;font-size:23px;letter-spacing:-.04em}
+.quiz-head p{margin:3px 0 0;color:var(--muted);font-size:13px}
+.quiz-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.quiz-card{border:1px solid var(--edge);background:var(--surface);border-radius:16px;padding:18px;min-width:0}
+.quiz-index{font-size:11px;color:var(--cyan);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.quiz-question{font-weight:750;font-size:14px;margin:9px 0 10px;min-height:46px}
+.quiz-card label{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}
+.answer-row{display:flex;gap:7px}
+.answer-row input{min-width:0;flex:1;background:var(--surface-quiet);border:1px solid var(--edge);border-radius:9px;color:var(--text);padding:10px;font-size:14px;font-variant-numeric:tabular-nums}
+.answer-row button{white-space:nowrap;padding:9px 12px}
+.feedback{font-size:12px;color:var(--muted);min-height:45px;margin-top:11px;padding:9px 11px;border-radius:9px;background:var(--surface-quiet);border:1px solid var(--edge)}
+.feedback.correct{border-color:var(--green);color:var(--text)}
+.feedback.incorrect{border-color:var(--red);color:var(--text)}
+.footer{border-top:1px solid var(--edge);padding:19px 0 30px;color:var(--muted);font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#announcer{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+@media(max-width:1100px){.main-grid{grid-template-columns:minmax(0,1.25fr) minmax(290px,1fr)}.panel{padding:17px}}
+@media(max-width:900px){.main-grid{grid-template-columns:1fr}.stack{gap:15px}.hero{align-items:flex-start}.model-note{max-width:280px}.quiz-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){.wrap{width:calc(100% - 24px)}.topbar{padding:15px 0 19px}.brandmark{width:42px;height:42px}.brand-sub{font-size:10px}.top-actions .pill{display:none}.mode-button{padding:10px 12px;font-size:12px}.hero{flex-direction:column;gap:13px}.model-note{max-width:none;width:100%}.kpis{grid-template-columns:1fr 1fr;gap:9px;margin:17px 0 12px}.kpi{padding:13px}.kpi .value{font-size:23px}.kpi .key{font-size:11px}.kpi .detail{font-size:10px}.panel{padding:14px;border-radius:14px}.panel-heading{flex-wrap:wrap}.quiz-grid{grid-template-columns:1fr}.quiz-card{padding:15px}.quiz-question{min-height:0}#powerChart{min-height:0}.footer{font-size:11px}}
+@media(max-width:360px){.brand-title{font-size:19px}.brand-sub{font-size:9px}.mode-button{font-size:11px;padding:9px}.kpi .value{font-size:20px}.key-grid{gap:10px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}.stream{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="topbar">
+  <div class="identity"><div class="brandmark" aria-hidden="true">☀</div><div><p class="brand-title">SolarFlow <span style="color:var(--cyan)">Lab</span></p><div class="brand-sub">Energy Engineering / Interactive Experiment</div></div></div>
+  <div class="top-actions"><span class="pill">● Live power balance</span><button type="button" class="mode-button" id="themeButton" aria-label="Switch to light mode" aria-pressed="false">☀ Light mode</button></div>
+</header>
+<section class="hero" aria-label="Introduction">
+ <div><h1>Follow the <em>energy.</em></h1><p>Move sunlight, panel, and inverter settings. Observe how instantaneous solar input becomes DC electricity, then AC power delivered to a load—while every watt is accounted for.</p></div>
+ <aside class="model-note"><strong>SIMPLIFIED INSTANTANEOUS STEADY-STATE MODEL</strong>Not a full solar-yield estimator. Ignores changing weather, shadows, module temperature, wiring, orientation, storage, and time-integrated production.</aside>
+</section>
+<section class="kpis" aria-label="Live power outputs">
+ <div class="kpi" style="--kpi-color:var(--gold)"><div class="key">Intercepted sunlight</div><div class="value"><span id="solarKpi">4,000</span> <span class="suffix">W</span></div><div class="detail">Irradiance × panel area</div></div>
+ <div class="kpi" style="--kpi-color:var(--cyan)"><div class="key">PV panel DC power</div><div class="value"><span id="dcKpi">800</span> <span class="suffix">W</span></div><div class="detail">Before the inverter</div></div>
+ <div class="kpi" style="--kpi-color:var(--green)"><div class="key">Useful AC output</div><div class="value"><span id="acKpi">760</span> <span class="suffix">W</span></div><div class="detail">Power supplied to load</div></div>
+ <div class="kpi" style="--kpi-color:var(--red)"><div class="key">Total non-useful input</div><div class="value"><span id="lostKpi">3,240</span> <span class="suffix">W</span></div><div class="detail">Unconverted solar + inverter loss</div></div>
+</section>
+<div class="main-grid">
+ <div class="stack">
+  <section class="panel" aria-labelledby="flowHeading">
+   <div class="panel-heading"><div><h2 id="flowHeading">01 / Instantaneous energy flow</h2><p>Animated paths show a conceptual flow of power. Select a component to learn what it does.</p></div><button id="animationButton" class="utility-button" type="button" aria-pressed="false">Ⅱ Pause flow</button></div>
+   <div class="diagram-scroller" tabindex="0" aria-label="Energy flow diagram, horizontally scrollable on small screens">
+    <svg id="energyDiagram" viewBox="0 0 1000 340" role="img" aria-label="Sunlight enters photovoltaic panels, DC power goes to an inverter, and AC power reaches a load. Unconverted solar input and inverter losses are shown separately.">
+      <defs><pattern id="tinyGrid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0H0V30" class="svg-grid" stroke-width=".7"/></pattern>
+      <marker id="arrowCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--cyan)"/></marker>
+      <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--green)"/></marker>
+      </defs>
+      <rect x="0" y="0" width="1000" height="340" fill="url(#tinyGrid)"/>
+      <path d="M152 147H222" class="connector" stroke="var(--gold)"/>
+      <path d="M152 147H222" id="solarStream" class="stream" stroke="var(--gold)"/>
+      <path d="M379 147H509" class="connector" stroke="var(--cyan)" marker-end="url(#arrowCyan)"/>
+      <path d="M379 147H509" id="dcStream" class="stream" stroke="var(--cyan)"/>
+      <path d="M664 147H801" class="connector" stroke="var(--green)" marker-end="url(#arrowGreen)"/>
+      <path d="M664 147H801" id="acStream" class="stream" stroke="var(--green)"/>
+      <path d="M296 212V255" class="connector" stroke="var(--loss)" stroke-width="2.5" stroke-dasharray="4 7"/>
+      <path d="M583 209V255" class="connector" stroke="var(--loss)" stroke-width="2.5" stroke-dasharray="4 7"/>
+      <g data-inspect="sun" class="svg-clickable" role="button" tabindex="0" aria-label="Inspect incident solar radiation">
+       <rect x="20" y="76" width="133" height="146" rx="19" class="svg-box"/>
+       <circle cx="87" cy="127" r="23" fill="var(--gold)" opacity=".96"/>
+       <g stroke="var(--gold)" stroke-width="3" stroke-linecap="round"><path d="M87 92V83M87 171V162M52 127H44M131 127H140M63 102L56 95M111 152L118 159M111 102L118 95M63 152L56 159"/></g>
+       <text x="87" y="184" text-anchor="middle" class="svg-label">Sunlight</text>
+       <text x="87" y="205" text-anchor="middle" id="svgSolarVal" class="svg-small">4,000 W in</text>
+      </g>
+      <g data-inspect="panel" class="svg-clickable" role="button" tabindex="0" aria-label="Inspect PV panel and conversion efficiency">
+       <rect x="222" y="76" width="157" height="146" rx="19" class="svg-box"/>
+       <path d="M252 102L341 102L354 165L238 165Z" fill="var(--cyan)" opacity=".18" stroke="var(--cyan)" stroke-width="2.2"/>
+       <path d="M269 102L262 165M291 102L291 165M314 102L323 165M245 123H345M242 144H350" fill="none" stroke="var(--cyan)" opacity=".65" stroke-width="1.8"/>
+       <text x="301" y="188" text-anchor="middle" class="svg-label">PV panel</text>
+       <text x="301" y="208" text-anchor="middle" id="svgDcVal" class="svg-small">800 W DC</text>
+      </g>
+      <g data-inspect="inverter" class="svg-clickable" role="button" tabindex="0" aria-label="Inspect inverter and efficiency">
+       <rect x="509" y="76" width="155" height="146" rx="19" class="svg-box"/>
+       <rect x="538" y="102" width="97" height="62" rx="10" stroke="var(--purple)" stroke-width="2" fill="var(--surface-quiet)"/>
+       <path d="M547 134H562L569 119L583 147L592 121L600 134H625" fill="none" stroke="var(--purple)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+       <text x="586" y="188" text-anchor="middle" class="svg-label">Inverter</text>
+       <text x="586" y="208" text-anchor="middle" id="svgInvVal" class="svg-small">95% efficiency</text>
+      </g>
+      <g data-inspect="load" class="svg-clickable" role="button" tabindex="0" aria-label="Inspect useful AC load">
+       <rect x="801" y="76" width="165" height="146" rx="19" class="svg-box"/>
+       <path d="M883 101C854 101 850 137 868 148V160H898V148C916 137 912 101 883 101Z" fill="var(--green)" fill-opacity=".17" stroke="var(--green)" stroke-width="2.6"/>
+       <path d="M869 164H897M873 169H893M876 174H890" stroke="var(--green)" stroke-width="3" stroke-linecap="round"/>
+       <text x="883" y="188" text-anchor="middle" class="svg-label">AC load</text>
+       <text x="883" y="208" text-anchor="middle" id="svgAcVal" class="svg-small">760 W delivered</text>
+      </g>
+      <g data-inspect="pvLoss" class="svg-clickable" role="button" tabindex="0" aria-label="Inspect unconverted solar input">
+       <rect x="178" y="257" width="235" height="60" rx="12" class="svg-box"/>
+       <circle cx="196" cy="278" r="5" fill="var(--loss)"/><text x="210" y="282" class="svg-small">Not converted to DC</text><text x="210" y="303" id="svgPvLoss" class="svg-number">3,200 W</text>
+      </g>
+      <g data-inspect="invLoss" class="svg-clickable" role="button" tabindex="0" aria-label="Inspect inverter electrical losses">
+       <rect x="486" y="257" width="214" height="60" rx="12" class="svg-box"/>
+       <circle cx="503" cy="278" r="5" fill="var(--red)"/><text x="516" y="282" class="svg-small">Inverter dissipation</text><text x="516" y="303" id="svgInvLoss" class="svg-number">40 W</text>
+      </g>
+      <text x="187" y="115" text-anchor="middle" class="svg-small" style="fill:var(--gold)">G × A</text>
+      <text x="444" y="115" text-anchor="middle" class="svg-small" style="fill:var(--cyan)">DC</text>
+      <text x="730" y="115" text-anchor="middle" class="svg-small" style="fill:var(--green)">AC</text>
+    </svg>
+   </div>
+   <div class="diagram-caption"><span>Power-flow animation is illustrative, not a representation of electron speed.</span><span>↔ Swipe diagram on smaller screens</span></div>
+   <div class="inspector" id="inspector"><strong>Select any component.</strong> Explore what each stage contributes to the power balance.</div>
+  </section>
+  <section class="panel" aria-labelledby="chartHeading">
+   <div class="panel-heading"><div><h2 id="chartHeading">02 / Power vs. irradiance</h2><p>At fixed area and efficiencies, DC and AC power grow linearly with sunlight intensity.</p></div><span class="tag">Tap graph to change G</span></div>
+   <svg id="powerChart" viewBox="0 0 760 330" role="img" tabindex="0" aria-label="Interactive chart of DC and AC power in watts against irradiance in watts per square metre. Use left and right arrow keys to adjust irradiance."></svg>
+   <div class="chart-key"><span><i class="dot" style="--color:var(--cyan)"></i>PV DC output</span><span><i class="dot" style="--color:var(--green)"></i>Inverter AC output</span><span><i class="dot" style="--color:var(--gold)"></i>Selected irradiance</span></div>
+   <div id="chartCaption" aria-live="off">Selected 800 W/m² → DC 800 W; AC 760 W.</div>
+  </section>
+ </div>
+ <div class="stack">
+  <section class="panel" aria-labelledby="controlHeading">
+   <div class="panel-heading"><div><h2 id="controlHeading">Experiment controls</h2><p>Move a slider to recalculate every value and graph.</p></div><span class="tag">Live</span></div>
+   <div class="form-control"><div class="control-head"><label for="irradiance">Solar irradiance G</label><output class="control-value" id="irradianceOut" for="irradiance">800 W/m²</output></div><input id="irradiance" type="range" min="0" max="1200" step="10" value="800"><div class="range-ticks"><span>0 W/m²</span><span>1,200 W/m²</span></div></div>
+   <div class="form-control"><div class="control-head"><label for="area">PV panel area A</label><output class="control-value" id="areaOut" for="area">5 m²</output></div><input id="area" type="range" min="0.5" max="20" step="0.5" value="5"><div class="range-ticks"><span>0.5 m²</span><span>20 m²</span></div></div>
+   <div class="form-control"><div class="control-head"><label for="pv">PV conversion efficiency ηPV</label><output class="control-value" id="pvOut" for="pv">20%</output></div><input id="pv" type="range" min="5" max="35" step="1" value="20"><div class="range-ticks"><span>5%</span><span>35%</span></div></div>
+   <div class="form-control" style="margin-bottom:10px"><div class="control-head"><label for="inverter">Inverter efficiency ηinv</label><output class="control-value" id="inverterOut" for="inverter">95%</output></div><input id="inverter" type="range" min="70" max="100" step="1" value="95"><div class="range-ticks"><span>70%</span><span>100%</span></div></div>
+   <div class="control-actions"><button class="primary-button" id="resetButton" type="button">↺ Reset example</button><button class="utility-button" id="experimentButton" type="button">☁ Cloudy-day preset</button></div>
+   <div class="equations" aria-label="Live model equations">
+    <div class="equation"><span>DC: G × A × ηPV</span><strong id="dcEquation">800 × 5 × 0.20 = 800 W</strong></div>
+    <div class="equation"><span>AC: PDC × ηinv</span><strong id="acEquation">800 × 0.95 = 760 W</strong></div>
+   </div>
+  </section>
+  <section class="panel" aria-labelledby="budgetHeading">
+   <div class="panel-heading"><div><h2 id="budgetHeading">03 / Power budget</h2><p>Where the intercepted sunlight goes at this instant.</p></div><span class="tag">W, not Wh</span></div>
+   <div class="key-grid">
+    <div class="key-row"><span class="swatch" style="--swatch:var(--loss)"></span><div><div class="key-value" id="budgetPvLoss">3,200 W</div><div class="key-label">Unconverted solar input</div></div></div>
+    <div class="key-row"><span class="swatch" style="--swatch:var(--red)"></span><div><div class="key-value" id="budgetInvLoss">40 W</div><div class="key-label">Inverter losses</div></div></div>
+    <div class="key-row"><span class="swatch" style="--swatch:var(--green)"></span><div><div class="key-value" id="budgetAc">760 W</div><div class="key-label">AC to load</div></div></div>
+    <div class="key-row"><span class="swatch" style="--swatch:var(--gold)"></span><div><div class="key-value" id="budgetTotal">4,000 W</div><div class="key-label">Total solar power incident</div></div></div>
+   </div>
+   <div class="budget-track" role="img" id="budgetBar" aria-label="Of 4,000 watts incident solar power, 3,200 watts are unconverted, 40 watts are lost in inverter, and 760 watts reach load."><div id="pvLossBar" style="background:var(--loss);width:80%"></div><div id="invLossBar" style="background:var(--red);width:1%"></div><div id="acBar" style="background:var(--green);width:19%"></div></div>
+   <p class="budget-explain" id="budgetMath">3,200 W + 40 W + 760 W = 4,000 W (balanced).</p>
+   <p class="budget-explain"><strong>Important:</strong> “Unconverted” includes reflected and otherwise unharvested solar energy; it is not necessarily all heat. Bars use actual power fractions, without exaggerating small losses.</p>
+  </section>
+  <section class="panel" aria-labelledby="assumptionsHeading">
+   <div class="panel-heading"><div><h2 id="assumptionsHeading">Model assumptions</h2><p>Read these before interpreting results.</p></div></div>
+   <ul class="assumptions">
+    <li>Instantaneous, fixed irradiance across the stated PV area (W/m² × m² = W).</li>
+    <li>Constant PV and inverter efficiencies at the chosen settings.</li>
+    <li>No battery, grid exchange, clipping, cable losses, temperature corrections, or irradiance transients.</li>
+    <li>AC power represents ideal instantaneous real power available to a matching load; no energy-yield forecast is made.</li>
+    <li>Energy (Wh or kWh) would require integrating power over time; this page calculates power only (W).</li>
+   </ul>
+  </section>
+ </div>
+</div>
+<section class="quiz" aria-labelledby="quizHeading">
+ <div class="quiz-head"><div><h2 id="quizHeading">Test your predictions</h2><p>Three instant-check questions based on your <strong>current settings</strong>. Answer in watts (W) to one decimal place.</p></div><span class="tag" id="scoreBadge">0 / 3 correct</span></div>
+ <div class="quiz-grid">
+  <form class="quiz-card" data-question="0" novalidate><div class="quiz-index">Check 01 · Conversion</div><div class="quiz-question">What DC power does the PV panel produce now?</div><label for="answer0">Predicted DC power (W)</label><div class="answer-row"><input id="answer0" type="number" inputmode="decimal" step="0.1" placeholder="e.g. 800.0" required><button class="primary-button" type="submit">Check</button></div><div id="feedback0" class="feedback" aria-live="polite">Use incident power × panel efficiency.</div></form>
+  <form class="quiz-card" data-question="1" novalidate><div class="quiz-index">Check 02 · Losses</div><div class="quiz-question">How many watts does the inverter lose now?</div><label for="answer1">Predicted inverter loss (W)</label><div class="answer-row"><input id="answer1" type="number" inputmode="decimal" step="0.1" placeholder="e.g. 40.0" required><button class="primary-button" type="submit">Check</button></div><div id="feedback1" class="feedback" aria-live="polite">Think DC input minus AC output.</div></form>
+  <form class="quiz-card" data-question="2" novalidate><div class="quiz-index">Check 03 · What if?</div><div class="quiz-question">If irradiance were halved, what would AC power be? Keep all other settings constant.</div><label for="answer2">Predicted new AC power (W)</label><div class="answer-row"><input id="answer2" type="number" inputmode="decimal" step="0.1" placeholder="e.g. 380.0" required><button class="primary-button" type="submit">Check</button></div><div id="feedback2" class="feedback" aria-live="polite">The equations are linear in irradiance.</div></form>
+ </div>
+</section>
+<footer class="footer"><span><strong>SolarFlow Lab</strong> — A conceptual teaching model, not a system-design or production forecast tool.</span><span>Units: W/m² · m² · W · % &nbsp; | &nbsp; Offline / no account</span></footer>
+</div>
+<div id="announcer" role="status" aria-live="polite" aria-atomic="true"></div>
+<script>
+(()=>{'use strict';
+ const DEFAULT={g:800,area:5,pv:20,inv:95};
+ const LIMITS={g:[0,1200,10],area:[0.5,20,0.5],pv:[5,35,1],inv:[70,100,1]};
+ const $=id=>document.getElementById(id);
+ let model={...DEFAULT}, animating=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let answered=[false,false,false], questionsInitialized=false;
+ const number=(n,d=0)=>Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+ const fixed=(n,d=1)=>number(n,d);
+ const nfmt=n=>{if(Math.abs(n)<0.00000001)return '0';return number(n,Number.isInteger(n)?0:1)};
+ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+ const compute=(params)=>{
+   const g=Number(params.g),area=Number(params.area),etaPV=Number(params.pv)/100,etaInv=Number(params.inv)/100;
+   const incident=g*area,dc=incident*etaPV,ac=dc*etaInv,pvLoss=incident-dc,invLoss=dc-ac;
+   return {incident,dc,ac,pvLoss,invLoss,totalLoss:pvLoss+invLoss};
+ };
+ const attrs=(el,map)=>Object.entries(map).forEach(([k,v])=>el.setAttribute(k,String(v)));
+ const output=(id,text)=>{$(id).textContent=text};
+ let power=compute(model);
+ function resetQuiz(){
+   answered=[false,false,false];
+   for(let i=0;i<3;i++){
+     const feedback=$('feedback'+i);feedback.className='feedback';
+     feedback.textContent=['Use incident power × panel efficiency.','Think DC input minus AC output.','The equations are linear in irradiance.'][i];
+     $('answer'+i).value='';
+   }
+   output('scoreBadge','0 / 3 correct');
+ }
+ function updateModel(){
+   power=compute(model);
+   const epsilon=Math.max(1,power.incident)*1e-10;
+   if(Math.abs(power.incident-(power.pvLoss+power.invLoss+power.ac))>epsilon){throw new Error('Power accounting failed');}
+   for(const [key,id,unit] of [['g','irradianceOut',' W/m²'],['area','areaOut',' m²'],['pv','pvOut','%'],['inv','inverterOut','%']]){
+     output(id,nfmt(model[key])+unit);$(key==='g'?'irradiance':key==='inv'?'inverter':key).value=String(model[key]);
+   }
+   output('solarKpi',nfmt(power.incident));output('dcKpi',nfmt(power.dc));output('acKpi',nfmt(power.ac));output('lostKpi',nfmt(power.totalLoss));
+   output('svgSolarVal',nfmt(power.incident)+' W in');output('svgDcVal',nfmt(power.dc)+' W DC');output('svgInvVal',model.inv+'% efficiency');output('svgAcVal',nfmt(power.ac)+' W delivered');
+   output('svgPvLoss',nfmt(power.pvLoss)+' W');output('svgInvLoss',nfmt(power.invLoss)+' W');
+   output('budgetPvLoss',nfmt(power.pvLoss)+' W');output('budgetInvLoss',nfmt(power.invLoss)+' W');output('budgetAc',nfmt(power.ac)+' W');output('budgetTotal',nfmt(power.incident)+' W');
+   output('budgetMath',nfmt(power.pvLoss)+' W + '+nfmt(power.invLoss)+' W + '+nfmt(power.ac)+' W = '+nfmt(power.incident)+' W (balanced).');
+   output('dcEquation',nfmt(model.g)+' × '+nfmt(model.area)+' × '+(model.pv/100).toFixed(2)+' = '+nfmt(power.dc)+' W');
+   output('acEquation',nfmt(power.dc)+' × '+(model.inv/100).toFixed(2)+' = '+nfmt(power.ac)+' W');
+   output('chartCaption','Selected '+nfmt(model.g)+' W/m² → DC '+nfmt(power.dc)+' W; AC '+nfmt(power.ac)+' W.');
+   const denominator=power.incident;
+   $('pvLossBar').style.width=(denominator?100*power.pvLoss/denominator:0)+'%';
+   $('invLossBar').style.width=(denominator?100*power.invLoss/denominator:0)+'%';
+   $('acBar').style.width=(denominator?100*power.ac/denominator:0)+'%';
+   $('budgetBar').setAttribute('aria-label',`Of ${nfmt(power.incident)} watts incident power, ${nfmt(power.pvLoss)} watts are unconverted, ${nfmt(power.invLoss)} watts are inverter loss, and ${nfmt(power.ac)} watts reach the AC load.`);
+   $('energyDiagram').classList.toggle('zero-flow',power.incident<=0);
+   const speed=.65+1.2/(1+power.incident/1200);
+   ['solarStream','dcStream','acStream'].forEach((id,i)=>{
+     $(id).style.animationDuration=(speed*(i===0?1:i===1?1.1:1.18)).toFixed(2)+'s';
+     const amount=[power.incident,power.dc,power.ac][i];
+     $(id).style.opacity=amount===0?'0.1':String(.4+.6*(1-Math.exp(-amount/400)));
+   });
+   drawChart();renderInspector();
+   if(questionsInitialized)resetQuiz();else questionsInitialized=true;
+ }
+ function niceCeiling(v){if(v<=0)return 100;const p=Math.pow(10,Math.floor(Math.log10(v)));const normalized=v/p;return(normalized<=1?1:normalized<=2?2:normalized<=2.5?2.5:normalized<=5?5:10)*p;}
+ const svgNS='http://www.w3.org/2000/svg';
+ function shape(type,properties,parent,txt){const el=document.createElementNS(svgNS,type);attrs(el,properties);if(txt!==undefined)el.textContent=txt;parent.appendChild(el);return el;}
+ function drawChart(){
+   const chart=$('powerChart');chart.replaceChildren();
+   const W=760,H=330,left=81,right=28,top=27,bottom=62;const plotW=W-left-right,plotH=H-top-bottom;
+   const maxX=1200,maxY=niceCeiling(maxX*model.area*model.pv/100*1.13);
+   const x=v=>left+(v/maxX)*plotW,y=v=>top+plotH-(v/maxY)*plotH;
+   const plot=shape('g',{},chart);
+   for(let i=0;i<=4;i++){
+     const value=i*maxY/4,py=y(value);
+     shape('line',{x1:left,x2:W-right,y1:py,y2:py,stroke:'var(--grid)','stroke-width':1},plot);
+     shape('text',{x:left-11,y:py+5,fill:'var(--muted)','font-size':12,'text-anchor':'end'},plot,nfmt(value));
+   }
+   for(let g=0;g<=maxX;g+=300){
+     const px=x(g);shape('line',{x1:px,x2:px,y1:top,y2:H-bottom,stroke:'var(--grid)','stroke-width':1},plot);
+     shape('text',{x:px,y:H-bottom+22,fill:'var(--muted)','font-size':12,'text-anchor':'middle'},plot,nfmt(g));
+   }
+   const endDc=maxX*model.area*model.pv/100,endAc=endDc*model.inv/100;
+   shape('line',{x1:x(0),y1:y(0),x2:x(maxX),y2:y(endDc),stroke:'var(--cyan)','stroke-width':4,'stroke-linecap':'round'},plot);
+   shape('line',{x1:x(0),y1:y(0),x2:x(maxX),y2:y(endAc),stroke:'var(--green)','stroke-width':4,'stroke-linecap':'round'},plot);
+   const lineX=x(model.g);
+   shape('line',{x1:lineX,x2:lineX,y1:top,y2:H-bottom,stroke:'var(--gold)','stroke-width':2,'stroke-dasharray':'6 6'},plot);
+   for(const [v,c] of [[power.dc,'var(--cyan)'],[power.ac,'var(--green)']]){
+     shape('circle',{cx:lineX,cy:y(v),r:7,fill:c,stroke:'var(--canvas)','stroke-width':2.5},plot);
+   }
+   shape('rect',{x:clamp(lineX-45,left,W-right-94),y:top+7,width:94,height:23,rx:7,fill:'var(--surface-elev)',stroke:'var(--edge)'},plot);
+   shape('text',{x:clamp(lineX+2,left+47,W-right-47),y:top+23,fill:'var(--gold)','font-size':12,'text-anchor':'middle','font-weight':750},plot,nfmt(model.g)+' W/m²');
+   shape('text',{x:left+plotW/2,y:H-10,fill:'var(--muted)','font-size':13,'text-anchor':'middle'},plot,'Irradiance G (W/m²)');
+   shape('text',{x:23,y:top+plotH/2,transform:`rotate(-90 23 ${top+plotH/2})`,fill:'var(--muted)','font-size':13,'text-anchor':'middle'},plot,'Power (W)');
+   chart.dataset.left=String(left);chart.dataset.right=String(W-right);
+   chart.setAttribute('aria-label',`Power versus irradiance, 0 to 1200 watts per square metre. Selected ${nfmt(model.g)} watts per square metre. DC power ${nfmt(power.dc)} watts and AC power ${nfmt(power.ac)} watts. Press left or right arrow to change irradiance.`);
+ }
+ function setParam(key,value){
+   const [min,max,step]=LIMITS[key];const num=Number(value);if(!Number.isFinite(num))return;
+   const next=clamp(Math.round((num-min)/step)*step+min,min,max);
+   if(next===model[key])return;
+   model[key]=Number(next.toFixed(6));updateModel();
+ }
+ $('irradiance').addEventListener('input',e=>setParam('g',e.target.value));
+ $('area').addEventListener('input',e=>setParam('area',e.target.value));
+ $('pv').addEventListener('input',e=>setParam('pv',e.target.value));
+ $('inverter').addEventListener('input',e=>setParam('inv',e.target.value));
+ $('resetButton').addEventListener('click',()=>{model={...DEFAULT};updateModel();$('announcer').textContent='Reset to the 800 watts per square metre example.';});
+ $('experimentButton').addEventListener('click',()=>{model={g:350,area:5,pv:20,inv:95};updateModel();$('announcer').textContent='Cloudy-day example loaded: 350 watts per square metre.';});
+ let theme='dark';try{theme=localStorage.getItem('solarflow-theme')==='light'?'light':'dark';}catch(_err){}
+ function applyTheme(t){theme=t;document.documentElement.dataset.theme=t;document.querySelector('meta[name="color-scheme"]').content=t;const light=t==='light';$('themeButton').textContent=light?'☾ Dark mode':'☀ Light mode';$('themeButton').setAttribute('aria-label',light?'Switch to dark mode':'Switch to light mode');$('themeButton').setAttribute('aria-pressed',String(light));try{localStorage.setItem('solarflow-theme',theme);}catch(_err){} }
+ $('themeButton').addEventListener('click',()=>applyTheme(theme==='dark'?'light':'dark'));applyTheme(theme);
+ function applyMotion(){
+   $('energyDiagram').classList.toggle('paused',!animating);
+   $('animationButton').textContent=animating?'Ⅱ Pause flow':'▶ Resume flow';
+   $('animationButton').setAttribute('aria-pressed',String(!animating));
+ }
+ $('animationButton').addEventListener('click',()=>{animating=!animating;applyMotion();});applyMotion();
+ const inspectorText={
+   sun:()=>`<strong>Incident sunlight:</strong> G × A = ${nfmt(model.g)} W/m² × ${nfmt(model.area)} m² = <strong>${nfmt(power.incident)} W</strong> intercepted. This is incoming radiant power, not electrical output.`,
+   panel:()=>`<strong>Photovoltaic panel:</strong> ${model.pv}% of incident power becomes DC electricity. ${nfmt(power.incident)} W × ${(model.pv/100).toFixed(2)} = <strong>${nfmt(power.dc)} W DC</strong>.`,
+   inverter:()=>`<strong>Inverter:</strong> ${model.inv}% of DC power appears as usable AC power. Inverter loss = ${nfmt(power.dc)} − ${nfmt(power.ac)} = <strong>${nfmt(power.invLoss)} W</strong>.`,
+   load:()=>`<strong>AC load:</strong> With a matching load, available output is <strong>${nfmt(power.ac)} W</strong>. Power is a rate; kWh depends on how long this power is sustained.`,
+   pvLoss:()=>`<strong>Unconverted solar power:</strong> ${nfmt(power.incident)} − ${nfmt(power.dc)} = <strong>${nfmt(power.pvLoss)} W</strong>. This includes reflected or otherwise uncaptured radiation, not just heating.`,
+   invLoss:()=>`<strong>Inverter loss:</strong> ${nfmt(power.dc)} − ${nfmt(power.ac)} = <strong>${nfmt(power.invLoss)} W</strong>. In this simplified power balance, it is dissipated rather than supplied to the AC load.`
+ };
+ let selected='';function renderInspector(){if(selected && inspectorText[selected])$('inspector').innerHTML=inspectorText[selected]();}
+ document.querySelectorAll('[data-inspect]').forEach(node=>{
+   const select=()=>{selected=node.dataset.inspect;renderInspector();};
+   node.addEventListener('click',select);
+   node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}});
+ });
+ const chart=$('powerChart');
+ function chartIrradiance(e){const r=chart.getBoundingClientRect();const px=(e.clientX-r.left)*(760/r.width);const x1=Number(chart.dataset.left)||81,x2=Number(chart.dataset.right)||732;return clamp((px-x1)/(x2-x1)*1200,0,1200);}
+ let pointerHeld=false;
+ chart.addEventListener('pointerdown',e=>{if(e.button!==0 && e.pointerType==='mouse')return;pointerHeld=true;try{chart.setPointerCapture(e.pointerId)}catch(_err){}setParam('g',chartIrradiance(e));});
+ chart.addEventListener('pointermove',e=>{if(pointerHeld)setParam('g',chartIrradiance(e));});
+ chart.addEventListener('pointerup',()=>{pointerHeld=false;});chart.addEventListener('pointercancel',()=>{pointerHeld=false;});
+ chart.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();setParam('g',model.g+(e.key==='ArrowRight'?10:-10));}else if(e.key==='Home'){e.preventDefault();setParam('g',0);}else if(e.key==='End'){e.preventDefault();setParam('g',1200);}});
+ document.querySelectorAll('form[data-question]').forEach(form=>{
+   form.addEventListener('submit',e=>{
+     e.preventDefault();const id=Number(form.dataset.question),input=$('answer'+id),feedback=$('feedback'+id);
+     if(input.value.trim()===''||!Number.isFinite(input.valueAsNumber)){feedback.className='feedback incorrect';feedback.textContent='Enter a valid number in watts (W) before checking.';return;}
+     const answers=[power.dc,power.invLoss,power.ac/2];const guess=input.valueAsNumber,expected=answers[id];
+     const correct=Math.abs(guess-expected)<=0.11;answered[id]=correct;
+     const method=[
+       `DC = ${nfmt(model.g)} W/m² × ${nfmt(model.area)} m² × ${(model.pv/100).toFixed(2)} = ${fixed(power.dc)} W.`,
+       `Inverter loss = DC − AC = ${fixed(power.dc)} W − ${fixed(power.ac)} W = ${fixed(power.invLoss)} W.`,
+       `Halving irradiance halves AC power: ${fixed(power.ac)} W ÷ 2 = ${fixed(power.ac/2)} W.`
+     ][id];
+     feedback.className='feedback '+(correct?'correct':'incorrect');
+     feedback.textContent=(correct?'✓ Correct! ':'Not quite. ')+method;
+     output('scoreBadge',answered.filter(Boolean).length+' / 3 correct');
+   });
+ });
+ updateModel();
+ // Small diagnostic API for instructors testing the pure model in browser DevTools.
+ window.SolarFlowLab={calculate:({irradiance,area,pvEfficiency,inverterEfficiency})=>compute({g:irradiance,area,pv:pvEfficiency,inv:inverterEfficiency}),getState:()=>({...model,...power})};
+})();
+</script>
+</body>
+</html>
